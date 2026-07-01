@@ -58,22 +58,39 @@ public class TrunkSwing : MonoBehaviour
     private void Start()
     {
         if (cam == null) cam = Camera.main;
-        SortSegments();
+        AcquireSegments();
         InitSim();
     }
 
-    // The scene's bone list is not in spatial order (it was authored roughly base, tip,
-    // then backwards). Sort by distance from the body so index 0 is the base and the last
-    // is the tip; otherwise the spline zig-zags across the scrambled points.
-    private void SortSegments()
+    // Get the bones, then order them. Two independent ways the list can be wrong, both handled:
+    //   1) The serialized 'segments' list may not rebind (the component still carries a stale
+    //      TrunkAiming missing-script marker). If it comes back empty, self-heal by finding the
+    //      trunk pieces parented under us by name, so the trunk works without any editor step.
+    //   2) The list order is not spatial (authored base, tip, then backwards). Sort by distance
+    //      from the body so index 0 is the base and the last is the tip; otherwise the spline
+    //      zig-zags across scrambled points.
+    private void AcquireSegments()
     {
-        if (segments == null) return;
+        if (segments == null) segments = new List<Transform>();
         segments.RemoveAll(s => s == null);
-        if (!autoSortByDistance || segments.Count < 2) return;
 
-        Vector3 baseP = transform.position;
-        segments.Sort((a, b) =>
-            (a.position - baseP).sqrMagnitude.CompareTo((b.position - baseP).sqrMagnitude));
+        if (segments.Count == 0)
+        {
+            foreach (Transform t in GetComponentsInChildren<Transform>(true))
+            {
+                if (t == transform) continue;
+                if (t.name.ToLower().Contains("trunk")) segments.Add(t);
+            }
+            if (segments.Count > 0)
+                Debug.Log($"[TrunkSwing] Serialized bone list was empty; auto-found {segments.Count} trunk bones under {name}.", this);
+        }
+
+        if (autoSortByDistance && segments.Count >= 2)
+        {
+            Vector3 baseP = transform.position;
+            segments.Sort((a, b) =>
+                (a.position - baseP).sqrMagnitude.CompareTo((b.position - baseP).sqrMagnitude));
+        }
     }
 
     private void InitSim()
